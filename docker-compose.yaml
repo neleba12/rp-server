@@ -1,0 +1,141 @@
+version: '3.8'
+
+services:
+
+  # ==========================================
+  # 1. NAS / COMPARTICIÓN DE ARCHIVOS (SAMBA)
+  # ==========================================
+  samba:
+    image: dperson/samba
+    container_name: nas_samba
+    restart: always
+    ports:
+      - "139:139"
+      - "445:445"
+    environment:
+      - TZ=Europe/Madrid
+    volumes:
+      - /media/nas/samba:/storage
+    command: '-s "NAS_Compartido;/storage;yes;no;no;${SAMBA_USER};none;none;none" -u "${SAMBA_USER};${SAMBA_PASSWORD}"'
+
+  # ==========================================
+  # 2. NEXTCLOUD (NUBE PERSONAL)
+  # ==========================================
+  nextcloud-db:
+    image: mariadb:10.11
+    container_name: nextcloud_db
+    restart: always
+    command: --transaction-isolation=READ-COMMITTED --log-bin-trust-function-creators=1
+    volumes:
+      - nextcloud_db_data:/var/lib/mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=clave_root_mariadb
+      - MYSQL_PASSWORD=${NEXTCLOUD_USER_PASSWORD}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+
+  nextcloud:
+    image: nextcloud:latest
+    container_name: nextcloud_app
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - nextcloud-db
+    volumes:
+      - /media/nas/nextcloud_data:/var/www/html/data
+      - nextcloud_config:/var/www/html
+    environment:
+      - MYSQL_PASSWORD=${NEXTCLOUD_USER_PASSWORD}
+      - MYSQL_DATABASE=nextcloud
+      - MYSQL_USER=nextcloud
+      - MYSQL_HOST=nextcloud-db
+
+  # ==========================================
+  # 3. PÁGINA WEB ESTÁTICA (NGINX)
+  # ==========================================
+  # mi-web:
+  #   image: nginx:alpine
+  #   container_name: servidor_web
+  #   restart: always
+  #   ports:
+  #     - "8081:80"
+  #   volumes:
+  #     - ./sitio-web:/usr/share/nginx/html:ro
+
+  # ==========================================
+  # 4. BASE DE DATOS POSTGRESQL + PGADMIN
+  # ==========================================
+  # postgres-db:
+  #   image: postgres:16-alpine
+  #   container_name: postgres_db
+  #   restart: always
+  #   environment:
+  #     POSTGRES_DB: mibasededatos
+  #     POSTGRES_USER: usuario_postgres
+  #     POSTGRES_PASSWORD: clave_postgres_segura
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres_data:/var/lib/postgresql/data
+
+  # pgadmin:
+  #   image: dpage/pgadmin4
+  #   container_name: pgadmin
+  #   restart: always
+  #   environment:
+  #     PGADMIN_DEFAULT_EMAIL: admin@tudominio.com
+  #     PGADMIN_DEFAULT_PASSWORD: clave_pgadmin_segura
+  #   ports:
+  #     - "5050:80"
+  #   depends_on:
+  #     - postgres-db
+
+  # ==========================================
+  # 5. BACKEND .NET 8 (WEB API)
+  # ==========================================
+  # backend-dotnet:
+  #   build:
+  #     context: ./backend-dotnet
+  #     dockerfile: Dockerfile
+  #   container_name: api_dotnet
+  #   restart: always
+  #   ports:
+  #     - "5000:8080"
+  #   environment:
+  #     - ASPNETCORE_ENVIRONMENT=Production
+  #     - ConnectionStrings__DefaultConnection=Host=postgres-db;Port=5432;Database=mibasededatos;Username=usuario_postgres;Password=clave_postgres_segura
+  #   depends_on:
+  #     - postgres-db
+
+  # ==========================================
+  # 6. ACCESO REMOTO SEGURO (CLOUDFLARE TUNNEL)
+  # ==========================================
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TOKEN}
+    command: tunnel --no-autoupdate run
+  # ==========================================
+  # 7. PANEL DE CONTROL (PORTAINER)
+  # ==========================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: always
+    ports:
+      - "9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+# ==========================================
+# VOLÚMENES PERSISTENTES
+# ==========================================
+volumes:
+  portainer_data:
+  nextcloud_db_data:
+  nextcloud_config:
+  # postgres_data:
